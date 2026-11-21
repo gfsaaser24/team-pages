@@ -25,7 +25,7 @@ import {
 } from "@/client/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/client/components/ui/popover";
 import { Separator } from "@/client/components/ui/separator";
-import { MAX_FILE_BYTES, TEXT_TYPES, type Block, type BlockType } from "@/lib/model";
+import { MAX_FILE_BYTES, MAX_FILE_LABEL, TEXT_TYPES, UPLOAD_PART_BYTES, type Block, type BlockType } from "@/lib/model";
 import { createPage, savePage } from "@/serverFunctions/pages";
 import { useTreeRename } from "./treeOverrides";
 import { FileBlock, SubpageIcon, TEXT_CLASS, listNumber, type FileInfo } from "./BlockView";
@@ -79,6 +79,8 @@ export function PageEditor({
   const [focusId, setFocusId] = useState<string | null>(null);
   const [extraFiles, setExtraFiles] = useState<Record<string, FileInfo>>({});
   const [uploading, setUploading] = useState(false);
+  /** 0 to 100 while a large file goes up in parts, else null. */
+  const [progress, setProgress] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const state = useRef({ title, icon, blocks });
@@ -189,23 +191,56 @@ export function PageEditor({
 
   async function upload(file: File) {
     if (file.size > MAX_FILE_BYTES) {
-      toast.error("Files can be up to 5 MB");
+      toast.error(`Files can be up to ${MAX_FILE_LABEL}`);
       return;
     }
     setUploading(true);
     try {
-      const form = new FormData();
-      form.set("pageId", page.id);
-      form.set("file", file);
-      const res = await fetch("/api/files", { method: "POST", body: form });
-      const body = (await res.json()) as FileInfo & { error?: string };
-      if (!res.ok) throw new Error(body.error ?? "Upload failed");
+      const body = file.size > UPLOAD_PART_BYTES ? await uploadInParts(file) : await uploadWhole(file);
       setExtraFiles((f) => ({ ...f, [body.id]: body }));
       insertAfter(state.current.blocks.length - 1, { id: crypto.randomUUID(), type: "file", text: body.name, ref: body.id });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setUploading(false);
+      setProgress(null);
+    }
+  }
+
+  async function uploadWhole(file: File): Promise<FileInfo> {
+    const form = new FormData();
+    form.set("pageId", page.id);
+    form.set("file", file);
+    return readJson<FileInfo>(await fetch("/api/files", { method: "POST", body: form }));
+  }
+
+  /** Sends a large file in parts of UPLOAD_PART_BYTES, one request each; cancels it on any failure. */
+  async function uploadInParts(file: File): Promise<FileInfo> {
+    const start = await readJson<{ id: string; parts: number }>(
+      await fetch("/api/files", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pageId: page.id, name: file.name, contentType: file.type, size: file.size }),
+      }),
+    );
+    try {
+      const parts: { partNumber: number; etag: string }[] = [];
+      setProgress(0);
+      for (let n = 1; n <= start.parts; n++) {
+        const chunk = file.slice((n - 1) * UPLOAD_PART_BYTES, n * UPLOAD_PART_BYTES);
+        parts.push(await readJson(await fetch(`/api/files/${start.id}?part=${n}`, { method: "PUT", body: chunk })));
+        setProgress(Math.round((n / start.parts) * 100));
+      }
+      return await readJson<FileInfo>(
+        await fetch(`/api/files/${start.id}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parts }),
+        }),
+      );
+    } catch (error) {
+      void fetch(`/api/files/${start.id}`, { method: "DELETE" }).catch(() => {});
+      throw error;
     }
   }
 
@@ -288,7 +323,7 @@ export function PageEditor({
                   render={
                     <Button variant="ghost" size="sm" data-testid="add-block" pending={uploading}>
                       <Plus data-icon="inline-start" />
-                      Add block
+                      {progress === null ? "Add block" : `Uploading ${progress}%`}
                     </Button>
                   }
                 />
@@ -543,4 +578,11 @@ function BlockRow({
       <div className="min-w-0 flex-1">{body}</div>
     </div>
   );
+}
+
+/** A JSON answer from the app's API, or its error message as a thrown Error. */
+async function readJson<T>(res: Response): Promise<T> {
+  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(body.error ?? "Upload failed");
+  return body;
 }

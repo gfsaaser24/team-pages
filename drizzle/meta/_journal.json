@@ -8,6 +8,13 @@
       "when": 1794975803100,
       "tag": "0000_round_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1795285438363,
+      "tag": "0001_minor_chamber",
+      "breakpoints": true
     }
   ]
 }

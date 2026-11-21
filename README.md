@@ -33,7 +33,7 @@ The checks in `checks/` run against a packaged release with the EveryApp runtime
 
 ## Limitations
 
-- Attachments are limited to 5 MB each.
+- Attachments can be up to 5 GB each. Files over 10 MB go up in 10 MB parts (an R2 multipart upload), so each request stays under Workers' 100 MB limit.
 - Two people editing the same page at once don't merge: the later save is refused and that person reloads.
 - A member appears in the share dialog and person properties after they have opened the app once.
 - Published links show the page as it is now, read-only; they have no custom domain or styling.

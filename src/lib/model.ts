@@ -38,7 +38,15 @@ export const TEXT_TYPES: { type: BlockType; label: string }[] = [
   { type: "code", label: "Code" },
 ];
 
-export const MAX_FILE_BYTES = 5 * 1024 * 1024;
+/** The largest attachment, uploaded to R2 in parts of UPLOAD_PART_BYTES. */
+export const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024;
+export const MAX_FILE_LABEL = "5 GB";
+/**
+ * One upload request's worth of a file. Workers refuse request bodies over
+ * 100 MB, and R2 needs every multipart part but the last to be at least 5 MiB.
+ * A file this size or smaller goes up in a single request.
+ */
+export const UPLOAD_PART_BYTES = 10 * 1024 * 1024;
 
 export const LEVELS = ["view", "comment", "edit", "full"] as const;
 export type Level = (typeof LEVELS)[number];

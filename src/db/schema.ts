@@ -112,6 +112,26 @@ export const files = sqliteTable(
   (t) => [index("files_page").on(t.pageId)],
 );
 
+/**
+ * A large upload in progress: an R2 multipart upload, its parts sent one
+ * request at a time. Completing it moves it to `files` under the same id.
+ */
+export const uploads = sqliteTable(
+  "uploads",
+  {
+    id: text("id").primaryKey(),
+    pageId: text("page_id").notNull(),
+    key: text("key").notNull(),
+    uploadId: text("upload_id").notNull(),
+    name: text("name").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    uploadedBy: text("uploaded_by").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("uploads_page").on(t.pageId)],
+);
+
 export const publications = sqliteTable("publications", {
   pageId: text("page_id").primaryKey(),
   slug: text("slug").notNull().unique(),
